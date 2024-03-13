@@ -13,15 +13,15 @@
 
 #define TICK_MS 10 //The time length of each tick, the unit is ms, and the coordinate point is updated every tick.
 #define STEP_HEIGHT 15
-// define leg length
+// define leg length (hauteur d'un pas)
 // L1: Root
 #define L1 23.0
-// L2: Thigh length
+// L2: Thigh length (cuisse)
 #define L2 55.0
-// L3: Calf length ：55+4
+// L3: Calf length ：55+4 (mollet)
 #define L3 59.0
-// Define active radius, DR = L2+L3-10
-#define DR 100.0
+// Define active radius, DR = L2+L3-10 (rayon actif défini) 
+#define DR 100.0 // (104 ?)
 
 /**
  * @brief define the body length and width , between adjacent servo.
@@ -55,11 +55,12 @@ Freenove_PCA9685 pca = Freenove_PCA9685();
 bool isRobotStanding = false;
 bool isRobotMoving = false;
 // last point legs
-float lastPt[4][3];
+float lastPt[4][3]; // matrice 4*3 --> 4 pattes, 3 moteurs par pattes
 
 // legs index: 0: Left front, 1: Left rear, 2: Right rear, 3: Right front.
 // float calibratePosition[4][3] = {{0, 99, 10}, {0, 99, 10}, {0, 99, -10}, {0, 99, -10}};
 // The default coordinate of quadruped is also the calibration coordinate point
+// corrdonnées par défaut de PxP dans le repère XxYxZx
 float calibratePosition[4][3] = {{10, 99, 10}, {10, 99, 10}, {10, 99, -10}, {10, 99, -10}};
 // Used to save the servo offset, in radians
 float servoOffset[4][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
@@ -70,7 +71,7 @@ float movingOriginPos[4][3];
 
 void setMoveSpeed(int spd)
 {
-	moveSpeed = constrain(spd, SPEED_MIN, SPEED_MAX);
+	moveSpeed = constrain(spd, SPEED_MIN, SPEED_MAX); // remet la vitesse entre les bornes [min , max]
 }
 
 /**
@@ -79,18 +80,27 @@ void setMoveSpeed(int spd)
  * @param startPt 
  * @param end__Pt 
  */
+
+
+// fonction de mvmt d'une patte d'un point de départ vers un point d'arrivée :
 void move_leg_to_point_directly(float (*startPt)[3], float (*end__Pt)[3])
 { 
 	//Triangle track. The parameters represent the coordinates of the foot point.
 	float lenghtP2P = 0;
 	for (int i = 0; i < 4; i++)
 	{
+		// calcul norme vecteur du déplacement de chacune des 4 pattes  :
 		float tmpLen = sqrt(square(end__Pt[i][0] - startPt[i][0]) + square(end__Pt[i][1] - startPt[i][1]) + square(end__Pt[i][2] - startPt[i][2]));
+		// si (tmpLenP2P > tmpLen) alors lenghtP2P=lenghthP2P, sinon lenghtP2P=tmpLen :
+		// donc on garde le plus grand entre tmpLen et leghtP2P
 		lenghtP2P = lenghtP2P > tmpLen ? lenghtP2P : tmpLen;
 	}
-	int stepTicks = round(lenghtP2P / moveSpeed) + 2;
+	// distance_deplacement / vitesse_deplacement --> temps_deplacement
+	int stepTicks = round(lenghtP2P / moveSpeed) + 2; // temps_deplacement +2
 
-	float k = -2 * STEP_HEIGHT / stepTicks; //, v = STEP_LENGTH / TICKS; //H = kT / 2, S = vT
+	// k correspond à 2* la hauteur du pas (montée descente de la patte ?) / la durée du déplacement
+	// le signe moins pour monter avant de descendre (axe y vers le bas ?)
+	float k = -2 * STEP_HEIGHT / stepTicks; //, v = STEP_LENGTH / TICKS; // H=(-)kT/2, S = vT
 	float trackPt[4][3];
 	u8 a = 0, c = 2; //, b = 1, d = 3
 	for (int i = 0; i < 2; i++)
@@ -109,30 +119,35 @@ void move_leg_to_point_directly(float (*startPt)[3], float (*end__Pt)[3])
 			c = 3;
 			// d = 2;
 		}
-		//First move leg 0 and 2. Then move leg 1 and 3.
+		// First move leg 0 and 2. Then move leg 1 and 3. // 
 		for (int t = 0; t <= stepTicks; t++)
 		{
-			for (int j = 0; j < 4; j++)
-			{
+			for (int j = 0; j < 4; j++) //
+			{	// on met à jour les TrackPt des 4 pattes 
+				// d'abord selon l'axe x
 				trackPt[j][0] = startPt[j][0] + t * (end__Pt[j][0] - startPt[j][0]) / stepTicks;
+				// puis selon l'axe y (montée et descente)
 				if (t < stepTicks / 2)
 				{
 					trackPt[j][1] = startPt[j][1] + k * t;
 				}
 				else
 				{
-					trackPt[j][1] = startPt[j][1] - k * t + k * t;
+					trackPt[j][1] = startPt[j][1] - k * t + k * t; // remet au sol instantanément ?? (ou c'est juste le suivi de de position qui revient au sol ?)ou une erreur ?
 				}
+				// puis selon l'axe z
 				trackPt[j][2] = startPt[j][2] + t * (end__Pt[j][2] - startPt[j][2]) / stepTicks;
 			}
-			cooToA(trackPt[a], las[a]);
+			// cooToA semble normaliser la position des pattes pour éviter d'avoir une distance [PxM1;PxP] trop grande et donc trop de couple sur les servos
+			// cooToA recalcule donc les angles des servos pour aller à la nouvelle position sans avoir [PxM1;PxP] > DR
+			cooToA(trackPt[a], las[a]); //trackPt[a] position PaP (xyz), las[a] angles moteurs Pa
 			cooToA(trackPt[c], las[c]);
-			updateLegx(a);
+			updateLegx(a); // Update commande servos avec les noueaux angles
 			updateLegx(c);
-			delay(TICK_MS);
+			delay(TICK_MS); // délai ajouté entre les mouvements des servos (10ms)
 		}
 	}
-	for (int j = 0; j < 4; j++)
+	for (int j = 0; j < 4; j++) // on maj la position finale des 4 pattes avec le point obtenu en sortie de la boucle de déplacement
 	{
 		lastPt[j][0] = trackPt[j][0];
 		lastPt[j][1] = trackPt[j][1];
@@ -142,24 +157,26 @@ void move_leg_to_point_directly(float (*startPt)[3], float (*end__Pt)[3])
 		// Serial.println("<<<<<");
 	}
 }
-void resumeStanding()
+
+// 
+void resumeStanding() 
 {
-	if (!isRobotStanding)
+	if (!isRobotStanding) // false par défaut
 	{
-		setBodyHeight(BODY_HEIGHT_DEFAULT);
-		standUp();
+		setBodyHeight(BODY_HEIGHT_DEFAULT); //commande les servos pour mettre le robot à la hauteur souhaitée
+		standUp(); // semble servir à rien
 		isRobotStanding = true;
 	}
 }
 void standUp()
 {
-	for (int j = 0; j < 4; j++)
+	for (int j = 0; j < 4; j++) // set la position finale sur la position de calibrage (pour chaque patte)
 	{
 		lastPt[j][0] = calibratePosition[j][0];
 		lastPt[j][1] = calibratePosition[j][1];
 		lastPt[j][2] = calibratePosition[j][2];
 	}
-	move_leg_to_point_directly(lastPt, calibratePosition);
+	move_leg_to_point_directly(lastPt, calibratePosition); // semble n'avoir aucun intérêt (position de départ erronée, position fin identique au départ et déjà normalisée...)
 	isRobotStanding = true;
 }
 
@@ -170,9 +187,17 @@ void standUp()
  * @param end__Pt 
  * @param spd 
  */
+
+// Fonction de déplacement (deux points d'appuis simultanés) : 
+// [cordonnées PxP départ] 
+// --> 2 * mouvement trapèze pattes mobiles + recul des deux pattes porteuses (en changeant le role des pattes entre les 2)  
+// --> [coordonnées PxP arrivée]
 void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 {
 	//Trapezoidal quadrilateral track. The parameters represent the coordinates of the foot point. Walking gait.
+	// Mouvement en deux 2 fois 3 temps : 
+	// 		- mouvement trapèze (3 sous mouvements) des 2 jambes qui avance et mouvement arrière des pattes qui poussent
+	// 		- idem en inversant le rôle des paires de jambes (0,2 --> 1,3) (1,3 --> 0,2)
 	float lenghtP2P = 0;
 	//Judge the two legs.
 	for (int i = 0; i < 2; i++)
@@ -180,9 +205,10 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 		float tmpLen = sqrt(square(end__Pt[i][0] - startPt[i][0]) + square(end__Pt[i][1] - startPt[i][1]) + square(end__Pt[i][2] - startPt[i][2]));
 		lenghtP2P = lenghtP2P > tmpLen ? lenghtP2P : tmpLen;
 	}
-	spd = constrain(spd, SPEED_MIN, SPEED_MAX);
-	int stepTicks = round(lenghtP2P / spd) + 3;
+	spd = constrain(spd, SPEED_MIN, SPEED_MAX); // on normalise la vitesse
+	int stepTicks = round(lenghtP2P / spd) + 3; // durée du mouvement complet calculé à partir du plus grand vecteur déplacement d'un PxP et de la vitesse
 	// Serial.println(String("stepTicks: ") + String(stepTicks));
+	// constante de vitesse k de chaque composante du mouvement 
 	float k = -3 * STEP_HEIGHT / stepTicks; //, v = STEP_LENGTH / stepTicks; //H = kT / 2, S = vT
 	float trackPt[4][3];
 	float tmpEnd__Pt[4][3]; // tmpStartPt[4][3],
@@ -194,7 +220,8 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 	{
 		for (int j = 0; j < 3; j++)
 		{
-			tmpEnd__Pt[i][j] = end__Pt[i][j];
+			tmpEnd__Pt[i][j] = end__Pt[i][j]; // on stock les positions finales des 4 pattes (en fin de mouvement)
+			// on en a besoin car la variable end_Pt va être modifiée pdt le déplacement
 		}
 	}
 	// Serial.println(">====>");
@@ -209,30 +236,31 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 	// }
 	// Serial.println("<====<");
 	// TICKS;
-	for (int i = 0; i < 2; i++)
+	for (int i = 0; i < 2; i++) // le mouvement est découpé en deux parties 
 	{
-		if (i == 0)
+		if (i == 0) 
 		{
-			a = 0;
-			b = 1;
-			c = 2;
+			a = 0; // pattes 0 et 2 pour rôle A (a,c) --> patte qui se soulève et avance
+			b = 1; // pattes 1 et 3 pour rôle B (b,d) --> patte qui reste au sol et pousse ??
+			c = 2; 
 			d = 3;
 		}
 		else
 		{
-			a = 1;
-			b = 0;
-			c = 3;
+			a = 1; // pattes 1 et 3 pour rôle A
+			b = 0; // pattes 0 et 2 pour rôle B
+			c = 3; 
 			d = 2;
 		}
 		for (u8 i = 0; i < 3; i++)
 		{
-			if (i == 1)
-				continue;
-			end__Pt[a][i] = tmpEnd__Pt[a][i];
-			end__Pt[c][i] = tmpEnd__Pt[c][i];
-			end__Pt[b][i] = 2 * movingOriginPos[b][i] - tmpEnd__Pt[b][i]; // End point of the reverse motion leg.
-			end__Pt[d][i] = 2 * movingOriginPos[d][i] - tmpEnd__Pt[d][i]; // End point of the reverse motion leg.
+			if (i == 1) 
+				continue; // on ignore la loop si on a i==1, donc on set les valeurs de end_Pt (position des pattes) sur les axes X et Z uniquement
+			end__Pt[a][i] = tmpEnd__Pt[a][i]; // rôle A
+			end__Pt[c][i] = tmpEnd__Pt[c][i]; // rôle A
+			// les pattes rôle B (qui poussent) doivent d'abord aller vers l'arrière avant de se diriger vers leur position finale
+			end__Pt[b][i] = 2 * movingOriginPos[b][i] - tmpEnd__Pt[b][i]; //Rôle B :  End point of the reverse motion leg.
+			end__Pt[d][i] = 2 * movingOriginPos[d][i] - tmpEnd__Pt[d][i]; //Rôle B :  End point of the reverse motion leg.
 		}
 		// Serial.println(">---->");
 		// for (u8 e = 0; e < 4; e++) {
@@ -246,26 +274,27 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 
 		for (int t = 0; t <= stepTicks; t++)
 		{
-			//First calculate the X-axis coordinates of the four points, of which leg 0 and 2 moves forward, and 1 3 and 0 2 move relatively.
+			//First calculate the X-axis coordinates of the four points, of which leg 0 and 2 (rôle A) moves forward, and 1 3 and 0 2 move relatively.
 			trackPt[a][0] = startPt[a][0] + (end__Pt[a][0] - startPt[a][0]) * t / stepTicks; //
 			trackPt[c][0] = startPt[c][0] + (end__Pt[c][0] - startPt[c][0]) * t / stepTicks; //
 			trackPt[b][0] = startPt[b][0] + (end__Pt[b][0] - startPt[b][0]) * t / stepTicks; // Legs 1 and 0 are reversed to each other.
 			trackPt[d][0] = startPt[d][0] + (end__Pt[d][0] - startPt[d][0]) * t / stepTicks; // Legs 2 and 3 are reversed to each other.
-			//Calculate the Y-axis coordinates, in which leg 0 2 lifts and leg 1 3 does not.
-			if (t < stepTicks / 3)
+			//Calculate the Y-axis coordinates, in which leg 0 2 (rôle A) lifts and leg 1 3 (rôle B) does not.
+			// on décompose le mouvement des pattes rôle A en 3
+			if (t < stepTicks / 3) // la patte monte phase 1/3
 			{
 				trackPt[a][1] = end__Pt[a][1] + k * t;
 				trackPt[c][1] = end__Pt[c][1] + k * t;
 			}
-			else if (t < stepTicks * 2 / 3)
+			else if (t < stepTicks * 2 / 3) // pas de mouvement vertical dans la phase 2/3
 			{
 			}
 			else
 			{
-				trackPt[a][1] = end__Pt[a][1] - k * t + k * stepTicks;
+				trackPt[a][1] = end__Pt[a][1] - k * t + k * stepTicks; // la patte descend en phase 3/3
 				trackPt[c][1] = end__Pt[c][1] - k * t + k * stepTicks;
 			}
-			trackPt[b][1] = end__Pt[b][1];
+			trackPt[b][1] = end__Pt[b][1]; // on met les pattes rôle B à leur coordonnée en Y finale (la patte rôle B reste au solo)
 			trackPt[d][1] = end__Pt[d][1];
 
 			// The Z axis calculation method is the same as the X axis.
@@ -273,9 +302,9 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 			trackPt[c][2] = startPt[c][2] + (end__Pt[c][2] - startPt[c][2]) * t / stepTicks; //
 			trackPt[b][2] = startPt[b][2] + (end__Pt[b][2] - startPt[b][2]) * t / stepTicks; // Legs 1 and 0 are reversed to each other.
 			trackPt[d][2] = startPt[d][2] + (end__Pt[d][2] - startPt[d][2]) * t / stepTicks; // Legs 2 and 3 are reversed to each other.
-			cooToA_All(trackPt, las);
-			updateServoAngle();
-			delay(TICK_MS);
+			cooToA_All(trackPt, las); // normalise la position des pattes
+			updateServoAngle(); // MAJ la commande des servos (4 pattes)
+			delay(TICK_MS); // délai entre deux mouvements
 			// for (int j = 0; j < 4; j++) {
 			//	Serial.println(String("trackPt: ") + String(trackPt[j][0]) + String(" ") + String(trackPt[j][1]) + String(" ") + String(trackPt[j][2]));
 			// }
@@ -288,7 +317,7 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 			for (u8 j = 0; j < 3; j++)
 			{
 				// end__Pt[i][j] = -tmpEnd__Pt[i][j];//tmpStartPt[i][j];
-				startPt[i][j] = trackPt[i][j];
+				startPt[i][j] = trackPt[i][j]; // on remet toutes les coordonnées des pattes à jour avant d'amorcer la deuxième partie du mouvement
 			}
 		}
 
@@ -305,7 +334,7 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 	// Serial.println(">>>>>");
 	for (int j = 0; j < 4; j++)
 	{
-		lastPt[j][0] = trackPt[j][0];
+		lastPt[j][0] = trackPt[j][0]; // on remet toutes les coordonnées des pattes à jour (déjà fait plus haut , semble redondant)
 		lastPt[j][1] = trackPt[j][1];
 		lastPt[j][2] = trackPt[j][2];
 		// Serial.println(String("lastPt: ") + String(lastPt[j][0]) + String(" ") + String(lastPt[j][1]) + String(" ") + String(lastPt[j][2]));
@@ -313,58 +342,81 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
 	// Serial.println("<<<<<");
 }
 
+
+
 // alpha is the moving direction, with the x-axis direction as 0 degrees, counterclockwise as positive, clockwise as negative. The unit is radians.
 // StepLength is step distance.
 /**
  * @brief Walk command, any direction, any step length, any spin angle, any speed
  *
  * @param alpha is the moving direction, with the x-axis direction as 0 degrees, counterclockwise as positive, clockwise as negative, and the unit is angle, [0-360]. The x direction is the direction of forward movement.
+ // alpha direction du mouvement linéaire (translation): (dans le plan XZ)
+ // mvmt translation pure --> le centre de gravité se déplace en ligne droite
  * @param stepLength The length of each step (<=20).
  * @param gama Spin angle, in-situ rotation, positive counterclockwise, negative clockwise, in degrees. [0-360].
+ * // Angle de rotation (dégré) joystick droit de la commande ? --> positif dans le sens horaire (tourne autour de l'axe x ? dans le plan de THETA)
+   // mvmt rotation pure --> le centre de gravité ne bouge pas
  * @param spd Movement speed, unit：mm / 10ms.  [1,8]
  */
-void move_any(int alpha, float stepLength, int gama, int spd)
+void move_any(int alpha, float stepLength, int gama, int spd) 
+	// l'argument alpha est un angle en degrés (direction du déplacement linéaire [TRANSLATION]) --> Joystick gauche angle
+	// l'agument stepLength semble être la longueur d'un pas [TRANSLATION] --> Joystick droit profondeur
+	// l'argument gama correspond au spin [ROTATION]--> joystick droit angle
 {
-	stepLength /= 2;
+	stepLength /= 2; // stepLength = stepLength/2
 	float newPt[4][3];
 	float delta_x, delta_z;
-	delta_x = stepLength * cos(alpha * PI / 180); //Portrait
-	delta_z = stepLength * sin(alpha * PI / 180); //Horizontal
+	delta_x = stepLength * cos(alpha * PI / 180); //Portrait : projection du pas selon l'axe X (on met alpha en radians) [TRANSLATION]
+	delta_z = stepLength * sin(alpha * PI / 180); //Horizontal : projection du pas selon l'axe Z (on met alpha en radians) [TRANSLATION]
 	float pt[] = {delta_x, 0, delta_z};			  //Target body coordinates. After each action ends, the body coordinates are regarded as the origin.
+	// Coordonnées du corps cible (centre de gravité (repère XYZ)). À la fin de chaque action, les coordonnées du corps sont considérées comme l'origine.
 
 	// memcpy(movingOriginPos, calibratePosition, sizeof(calibratePosition));
-	// Body translation coefficient
-	const float kx_t = 0.3, kz_t = 0.15;
-	// Body inclination coefficient
+	// Body translation coefficient (axe X)
+	const float kx_t = 0.3, kz_t = 0.15; 
+	// Body inclination coefficient (axe Z)
 	const float kx_p = 0.34, kz_p = 0.2;
-	//Calculate the center point of each foot when moving. Based on the calibration point, the center of gravity is offset to the moving direction, and the body is inclined to the moving direction. When moving, the landing point of the step is symmetrical to the center point.
+
+	//Calculate the center point of each foot when moving. 
+	//Based on the calibration point, the center of gravity is offset to the moving direction, and the body is inclined to the moving direction. 
+	//..., le centre de gravité est décalé par rapport à la direction du mouvement, et le corps est incliné par rapport à la direction du mouvement
+	//When moving, the landing point (pt d'attérissage) of the step is symmetrical to the center point.
+	
+	// translation : [position de calibrage] --> translation  --> [position de calibrage]
 	for (int j = 0; j < 4; j++)
 	{
-		movingOriginPos[j][0] = calibratePosition[j][0] - delta_x * kx_t;
-		movingOriginPos[j][2] = calibratePosition[j][2] - delta_z * kz_t;
+		movingOriginPos[j][0] = calibratePosition[j][0] - delta_x * kx_t; // position par défaut de PxP - translation_x*coeff_translation_x (projeté selon X dans le repère XxYxZx de chaque patte) 
+		// cela correspond à un recul de la patte dans son repère ?
+		movingOriginPos[j][2] = calibratePosition[j][2] - delta_z * kz_t; // idem projeté sur Z
 	}
-	movingOriginPos[0][1] = calibratePosition[0][1] - delta_x * kx_p - delta_z * kz_p;
-	movingOriginPos[1][1] = calibratePosition[1][1] + delta_x * kx_p - delta_z * kz_p;
-	movingOriginPos[2][1] = calibratePosition[2][1] + delta_x * kx_p + delta_z * kz_p;
-	movingOriginPos[3][1] = calibratePosition[3][1] - delta_x * kx_p + delta_z * kz_p;
+	
+	// altitude (Y) des pattes dans leur repère (Yx) (en fonction de l'inclinaison du robot pdt la translation ? pt d'appuis ?)
+	movingOriginPos[0][1] = calibratePosition[0][1] - delta_x * kx_p - delta_z * kz_p; 
+	movingOriginPos[1][1] = calibratePosition[1][1] + delta_x * kx_p - delta_z * kz_p; 
+	movingOriginPos[2][1] = calibratePosition[2][1] + delta_x * kx_p + delta_z * kz_p; 
+	movingOriginPos[3][1] = calibratePosition[3][1] - delta_x * kx_p + delta_z * kz_p; 
 
-	float c = gama * PI / 180;
-	float v_x_sin_theta_p_c = v * sin(theta + c);
-	float v_x_sin_theta_m_c = v * sin(theta - c);
-	float v_x_cos_theta_p_c = v * cos(theta + c);
-	float v_x_cos_theta_m_c = v * cos(theta - c);
+	// rotation
+	float c = gama * PI / 180; // c = gama angle de spin en radian
+	float v_x_sin_theta_p_c = v * sin(theta + c); // spin des pattes Px et Pxo projeté sur Xx et Xx+2
+	float v_x_sin_theta_m_c = v * sin(theta - c); // mouvement inverse avec les pattes opposé pour que ca tourne
+	float v_x_cos_theta_p_c = v * cos(theta + c); // spin des pattes Px+1 et Pxo+1 projeté sur Zx+1 et Zx+3
+	float v_x_cos_theta_m_c = v * cos(theta - c); // mouvement inverse avec les pattes opposé pour que ca tourne
 
+	// Position finale : translation + rotation (projeté sur Xn)
 	newPt[0][0] = movingOriginPos[0][0] + pt[0] + v_x_cos_theta_p_c - LEN_BD;
 	newPt[1][0] = movingOriginPos[1][0] + pt[0] - v_x_cos_theta_m_c + LEN_BD;
 	newPt[2][0] = movingOriginPos[2][0] + pt[0] - v_x_cos_theta_p_c + LEN_BD;
 	newPt[3][0] = movingOriginPos[3][0] + pt[0] + v_x_cos_theta_m_c - LEN_BD;
 
+	// Position finale : (projeté sur Yn)
 	newPt[0][1] = movingOriginPos[0][1];
 	newPt[1][1] = movingOriginPos[1][1];
 	newPt[2][1] = movingOriginPos[2][1];
 	newPt[3][1] = movingOriginPos[3][1];
 
-	newPt[0][2] = movingOriginPos[0][2] + pt[2] + v_x_sin_theta_p_c - WID_BD;
+	// Position finale : translation + rotation (projeté sur Zn)
+	newPt[0][2] = movingOriginPos[0][2] + pt[2] + v_x_sin_theta_p_c - WID_BD; // recul_z ? + tranlation_z + (rotation_z - reference) 
 	newPt[1][2] = movingOriginPos[1][2] + pt[2] + v_x_sin_theta_m_c - WID_BD;
 	newPt[2][2] = movingOriginPos[2][2] + pt[2] - v_x_sin_theta_p_c + WID_BD;
 	newPt[3][2] = movingOriginPos[3][2] + pt[2] - v_x_sin_theta_m_c + WID_BD;
@@ -379,20 +431,23 @@ void move_any(int alpha, float stepLength, int gama, int spd)
  *
  * @param startPt Starting point
  * @param end__Pt Target point
- * @param tickLength The longest distance of each tick. The larger the distance, the faster the movement speed. The default is 5 and the unit is mm.
+ * @param tickLength The longest distance of each tick (?) The larger the distance, the faster the movement speed. The default is 5 and the unit is mm.
  * @param isContainedOffset Whether to include calibration information, the default is included.
  */
+
+// Cette fonction calcule le temps de mouvement des pattes à partir de la patte qui parcours la plus grande distance (pt depart/arrivee en arguments)
+// Puis déplace les pattes à la vitesse demandée (tickLength % vitesse)
 void action_twist(float (*startPt)[3], float (*end__Pt)[3], float tickLength, bool isContainedOffset)
 {
 	//The parameter represents the foot point coordinates.
-	float trackPt[4][3];
+	float trackPt[4][3];	//The longest distance of each tick
 	float lenghtP2P = 0;
 	for (int i = 0; i < 4; i++)
 	{
 		float tmpLen = sqrt(square(end__Pt[i][0] - startPt[i][0]) + square(end__Pt[i][1] - startPt[i][1]) + square(end__Pt[i][2] - startPt[i][2]));
 		lenghtP2P = lenghtP2P > tmpLen ? lenghtP2P : tmpLen;
 	}
-	int stepTicks = round(lenghtP2P / tickLength) + 2;
+	int stepTicks = round(lenghtP2P / tickLength) + 2; // plus grand déplacement d'une patte / tickLength +2 (stepTicks = temps donc tickLength devrait correspondre à une vitesse)
 	//The four legs move together starting from the calibration position.
 	for (int t = 0; t <= stepTicks; t++)
 	{
@@ -408,8 +463,8 @@ void action_twist(float (*startPt)[3], float (*end__Pt)[3], float tickLength, bo
 			// Serial.println();
 			// Serial.println("<----<");
 		}
-		cooToA_All(trackPt, las);
-		updateServoAngle(isContainedOffset);
+		cooToA_All(trackPt, las); // calcule la position normalisée (limiter distance PxM1 PxP)
+		updateServoAngle(isContainedOffset); // maj de la commande des servos (arg = avec ou sans offset)
 		vTaskDelay(TICK_MS);
 	}
 
@@ -463,18 +518,18 @@ void twist_any(int alpha, int beta, int gama)
 	action_twist(lastPt, newPt, 5);
 	// move_body_step_by_step(lastPt, newPt);
 }
-void setBodyHeight(int h)
+void setBodyHeight(int h) //  met le robot à la hauteur h (vertical axe -Y) souhaitée
 {
 	float newPt[4][3];
-	h = constrain(h, BODY_HEIGHT_MIN, BODY_HEIGHT_MAX);
+	h = constrain(h, BODY_HEIGHT_MIN, BODY_HEIGHT_MAX); // on borne h
 	bodyHeight = h;
 	newPt[0][0] = calibratePosition[0][0];
 	newPt[1][0] = calibratePosition[1][0];
 	newPt[2][0] = calibratePosition[2][0];
 	newPt[3][0] = calibratePosition[3][0];
 
-	newPt[0][1] = h;
-	newPt[1][1] = h;
+	newPt[0][1] = h; // y(P0P) = h
+	newPt[1][1] = h; // y(P1P) = h
 	newPt[2][1] = h;
 	newPt[3][1] = h;
 
@@ -482,7 +537,7 @@ void setBodyHeight(int h)
 	newPt[1][2] = calibratePosition[1][2];
 	newPt[2][2] = calibratePosition[2][2];
 	newPt[3][2] = calibratePosition[3][2];
-	action_twist(lastPt, newPt, 5);
+	action_twist(lastPt, newPt, 5); // commande mouvement pattes (3eme argument % vitesse mouvement)
 }
 
 void setBeforeCalibrationHeight(int h)
@@ -673,14 +728,14 @@ void updateServoAngle(bool b)
 {
 	if (b)
 	{
-		updateLegx(0);
+		updateLegx(0); // si b=true MAJ commande des servos P0
 		updateLegx(1);
 		updateLegx(2);
 		updateLegx(3);
 	}
 	else
 	{
-		updateLegxWithoutOffset(0);
+		updateLegxWithoutOffset(0); // si b=true MAJ commande des servos P0 sans le offset (calibrage ?)
 		updateLegxWithoutOffset(1);
 		updateLegxWithoutOffset(2);
 		updateLegxWithoutOffset(3);
@@ -715,30 +770,34 @@ void cooToA(float *xyz, float *abc)
 	// Serial.println(String(x) + String(" ") + String(y) + String(" ") + String(z));
 
 	float x_3 = 0, x_4, x_5 = 0, l23 = 0, w = 0, v = 0;
-	a = PI / 2 - atan2(z, y);
-	x_3 = 0;		   // Intersection point of L1 and L2: x
-	x_4 = L1 * sin(a); // Intersection point of L1 and L2: y
-	x_5 = L1 * cos(a); // Intersection point of L1 and L2: z
 
+	a = PI / 2 - atan2(z, y); // a= pi/2 - arctan(z/y) --> voir S1/S2
+
+	// position de PxM1 dans le repère de la patte
+	x_3 = 0;		   // Intersection point of L1 and L2: x 
+	x_4 = L1 * sin(a); // Intersection point of L1 and L2: y ATTENTION ERREUR PROJECTION ?
+	x_5 = L1 * cos(a); // Intersection point of L1 and L2: z ATTENTION ERREUR PROJECTION ?
+
+	// calcule la norme de la distance entre les points PxP et PxM1
 	d = sqrt(pow((z - x_5), 2) + pow((y - x_4), 2) + pow((x - x_3), 2));
-	if (d > DR)
+	if (d > DR) // si la distance entre PxP et PxM1 est plus grande que la référence alors on recalcule la position du pied ? 
 	{
-		k = DR / d;
-		x = k * (x - x_3) + x_3;
+		k = DR / d; // pas le même k que précédemment (rapport entre taille jambe de référence et écart actuel entre PxP et PxM1)
+		x = k * (x - x_3) + x_3; 
 		y = k * (y - x_4) + x_4;
 		z = k * (z - x_5) + x_5;
 	}
-
+	// l23 est une maj du d (si la position du pied a changé)
 	l23 = sqrt(pow((z - x_5), 2) + pow((y - x_4), 2) + pow((x - x_3), 2));
 	// l23 = constrain(l23, 0, L2 + L3);
-	w = (x - x_3) / l23;
-	v = (L2 * L2 + l23 * l23 - L3 * L3) / (2 * L2 * l23);
-	b = asin(w) - acos(v);
-	c = PI - acos((pow(L2, 2) + pow(L3, 2) - pow(l23, 2)) / (2 * L3 * L2));
-	a = a / PI * 180;
+	w = (x - x_3) / l23; // w = sin(gamma1) --> voir S1
+	v = (L2 * L2 + l23 * l23 - L3 * L3) / (2 * L2 * l23); // v = cos(gamma2) --> voir S1
+	b = asin(w) - acos(v); // angle rotation M1 (axe z)
+	c = PI - acos((pow(L2, 2) + pow(L3, 2) - pow(l23, 2)) / (2 * L3 * L2)); // c = Pi - gamma3 --> c angle rotation M2 (axe z)
+	a = a / PI * 180; // passage en degrés des angles
 	b = b / PI * 180;
 	c = c / PI * 180;
-	b = map(b, -90, 90, 180, 0);
+	b = map(b, -90, 90, 180, 0); // ????
 	abc[0] = a;
 	abc[1] = b;
 	abc[2] = c;

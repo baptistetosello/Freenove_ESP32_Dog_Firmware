@@ -15,8 +15,8 @@
 #include "esp_pm.h"
 #include "esp32/pm.h"
 #include <pthread.h>
-#include <esp_spiram.h>
-#include <esp_himem.h>
+#include <esp32/spiram.h>
+#include <esp32/himem.h>
 
 #include "esp_wifi.h"
 #include "esp_adc_cal.h"

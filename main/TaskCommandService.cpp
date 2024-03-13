@@ -65,7 +65,7 @@ void task_CommandService(void *pvParameters)
 							s = "Controller is legal.";
 						}
 						else
-						{
+						{ 
 							s = "Controller is llegal.";
 						}
 						break;

@@ -1,0 +1,9 @@
+# Build directory
+[Bb]uild
+
+# Generated configuration
+sdkconfig
+
+# IDE files
+*.lock
+

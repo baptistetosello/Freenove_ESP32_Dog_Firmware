@@ -69,6 +69,7 @@
 #define __STRINGIFY(a) #a
 #endif
 
+// si la puissance est en dehors de [low, high] on ramène entre les bornes
 #define constrain(amt,low,high) ((amt)<(low)?(low):((amt)>(high)?(high):(amt)))
 #define radians(deg) ((deg)*DEG_TO_RAD)
 #define degrees(rad) ((rad)*RAD_TO_DEG)
