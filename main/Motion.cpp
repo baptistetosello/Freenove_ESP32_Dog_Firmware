@@ -12,7 +12,7 @@
 #include "Motion.h"
 
 #define TICK_MS 10 //The time length of each tick, the unit is ms, and the coordinate point is updated every tick.
-#define STEP_HEIGHT 15
+#define STEP_HEIGHT 15 // 15 MPM
 // define leg length (hauteur d'un pas)
 // L1: Root
 #define L1 23.0
@@ -82,8 +82,11 @@ void setMoveSpeed(int spd)
  */
 
 
-// fonction de mvmt d'une patte d'un point de départ vers un point d'arrivée :
+// fonction de mvmt des PnP d'un point de départ vers un point d'arrivée :
 void move_leg_to_point_directly(float (*startPt)[3], float (*end__Pt)[3])
+	// Mouvement en deux 2 fois 2 temps : 
+	// 		- mouvement triangle (2 sous mouvements) des 2 jambes qui avance et mouvement arrière des pattes qui poussent
+	// 		- idem en inversant le rôle des paires de jambes (0,2 --> 1,3) (1,3 --> 0,2)
 { 
 	//Triangle track. The parameters represent the coordinates of the foot point.
 	float lenghtP2P = 0;
@@ -142,7 +145,7 @@ void move_leg_to_point_directly(float (*startPt)[3], float (*end__Pt)[3])
 			// cooToA recalcule donc les angles des servos pour aller à la nouvelle position sans avoir [PxM1;PxP] > DR
 			cooToA(trackPt[a], las[a]); //trackPt[a] position PaP (xyz), las[a] angles moteurs Pa
 			cooToA(trackPt[c], las[c]);
-			updateLegx(a); // Update commande servos avec les noueaux angles
+			updateLegx(a); // Update commande servos avec les nouveaux angles
 			updateLegx(c);
 			delay(TICK_MS); // délai ajouté entre les mouvements des servos (10ms)
 		}
@@ -164,7 +167,7 @@ void resumeStanding()
 	if (!isRobotStanding) // false par défaut
 	{
 		setBodyHeight(BODY_HEIGHT_DEFAULT); //commande les servos pour mettre le robot à la hauteur souhaitée
-		standUp(); // semble servir à rien
+		//standUp(); // semble servir à rien CPM
 		isRobotStanding = true;
 	}
 }
@@ -177,6 +180,7 @@ void standUp()
 		lastPt[j][2] = calibratePosition[j][2];
 	}
 	move_leg_to_point_directly(lastPt, calibratePosition); // semble n'avoir aucun intérêt (position de départ erronée, position fin identique au départ et déjà normalisée...)
+	// les vecteurs déplacement sont nuls --> stepTicks = 2 --> on monte et descend en y brièvement pdt que les pattes opposés poussent ??
 	isRobotStanding = true;
 }
 
@@ -358,10 +362,14 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd)
    // mvmt rotation pure --> le centre de gravité ne bouge pas
  * @param spd Movement speed, unit：mm / 10ms.  [1,8]
  */
+
+
 void move_any(int alpha, float stepLength, int gama, int spd) 
 	// l'argument alpha est un angle en degrés (direction du déplacement linéaire [TRANSLATION]) --> Joystick gauche angle
 	// l'agument stepLength semble être la longueur d'un pas [TRANSLATION] --> Joystick droit profondeur
 	// l'argument gama correspond au spin [ROTATION]--> joystick droit angle
+	// LA FONCTION MOVE ANY CALCULE LA POSITION FINALE DE CHAQUE PATTE DANS LEUR REPERE POUR QUE L'APPEL DE LA FONCTION MOVE_STEP_BY_STEP
+	// CORRESPONDE AU DEPLACEMENT SOUHAITE (arguments)
 {
 	stepLength /= 2; // stepLength = stepLength/2
 	float newPt[4][3];
@@ -426,8 +434,157 @@ void move_any(int alpha, float stepLength, int gama, int spd)
 	// memcpy(calibratePosition, tmpCalibrationPos, sizeof(calibratePosition));
 }
 
+void move_any2(int alpha, float stepLength, int gama, int spd) 
+	// l'argument alpha est un angle en degrés (direction du déplacement linéaire [TRANSLATION]) --> Joystick gauche angle
+	// l'agument stepLength semble être la longueur d'un pas [TRANSLATION] --> Joystick droit profondeur
+	// l'argument gama correspond au spin [ROTATION]--> joystick droit angle
+{
+	stepLength = 10; // stepLength = stepLength/2
+	//alpha = 0;
+	//gama = 0;
+	u8 pa1 = 0 , pa2 = 1, pr1 = 2, pr2 = 3;
+	pa1 = 0; // patte qui se soulève et avance
+	pa2 = 2; // patte qui se soulève et avance
+	pr1 = 1; // patte qui reste au sol et pousse 
+	pr2 = 3; // patte qui reste au sol et pousse 
+
+// EQUILIBRE 
+	if (stepLength==-1) {
+		
+		pa1 = 1; // patte qui se soulève et avance
+		pa2 = 3; // patte qui se soulève et avance
+		pr1 = 0; // patte qui reste au sol et pousse 
+		pr2 = 2; // patte qui reste au sol et pousse
+		
+		// PHASE 1.1 : 
+		// pa : 135/90 --> 135/135
+		// pr : 135/90 --> nbp
+		las[pa1][1]=135;
+		las[pa1][2]=135;
+		las[pa2][1]=135;
+		las[pa2][2]=135;
+		las[0][0] = 80;
+		updateServoAngle(); // MAJ la commande des servos (4 pattes)
+		delay(2000*TICK_MS);
+		}
+		
+
+	// PIETINEMENT (x2)
+	if (stepLength<=5 && stepLength<=0 ) {
+		for (int i = 0; i < 2; i++) {
+			if (i==1)  {
+				pa1 = 1; // patte qui se soulève et avance
+				pa2 = 3; // patte qui se soulève et avance
+				pr1 = 0; // patte qui reste au sol et pousse 
+				pr2 = 2; // patte qui reste au sol et pousse
+			}
+				// PHASE 1.1 : 
+				// pa : 135/90 --> 135/135
+				// pr : 135/90 --> nbp
+				las[pa1][1]=135;
+				las[pa1][2]=135;
+				las[pa2][1]=135;
+				las[pa2][2]=135;
+				updateServoAngle(); // MAJ la commande des servos (4 pattes)
+				delay(10*TICK_MS);
+				// PHASE 1.2 : 
+				// pa : 135/135 --> 135/90 
+				// pr : 135/90 --> nbp
+				las[pa1][1]=135;
+				las[pa1][2]=90;
+				las[pa2][1]=135;
+				las[pa2][2]=90;
+				updateServoAngle(); // MAJ la commande des servos (4 pattes)
+				delay(20*TICK_MS); 
+		}
+	}	
+
+	// FOULEE COURTE (x1)
+	if (stepLength>5 && stepLength<=10) {
+		float angles_arr [2][2];	
+		int role = 0;
+		// PHASE 1.1 : 
+		// pa : 135/90 --> 135/135
+		// pr : 135/90 --> 140/89
+		las[0][1]=135;
+		las[0][2]=90;
+		las[1][1]=135;
+		las[1][2]=90;
+		angles_arr [0][0] = 135;
+		angles_arr [0][1] = 135;
+		angles_arr [1][0] = 140;
+		angles_arr [1][1] = 89;
+		angle_speed_move(angles_arr, role, 5);
+		// PHASE 1.2 : 
+		// pa : 135/135 --> 135/90 
+		// pr : 140/89 --> 146/88
+		angles_arr [0][0] = 135;
+		angles_arr [0][1] = 90;
+		angles_arr [1][0] = 146;
+		angles_arr [1][1] = 88;
+		angle_speed_move(angles_arr, role, 10);
+		// PHASE 2.1 : 
+		// pa : 135/90 --> NBP
+		// pr : 129/89 --> 135/135
+		angles_arr [0][0] = 135;
+		angles_arr [0][1] = 90;
+		angles_arr [1][0] = 135;
+		angles_arr [1][1] = 135;
+		angle_speed_move(angles_arr, role, 5);
+		// PHASE 2.2 : 
+		// pa : 135/90 --> NBP
+		// pr : 135/135 --> 135/90
+		angles_arr [0][0] = 135;
+		angles_arr [0][1] = 90;
+		angles_arr [1][0] = 135;
+		angles_arr [1][1] = 90;
+		angle_speed_move(angles_arr, role, 10); 
+		delay(100*TICK_MS); 	
+	}		
+}
+
+void angle_speed_move(float angles_arr [2][2], int role,  int nb_paliers) 
+{
+	float angles_dep [2][2];
+	if (role ==0) {
+		angles_dep [0][0] = las [0][1];
+		angles_dep [0][1] = las [0][2];
+		angles_dep [1][0] = las [1][1];
+		angles_dep [1][1] = las [1][2];
+	}
+	else {
+		angles_dep [0][0] = las [1][1];
+		angles_dep [0][1] = las [1][2];
+		angles_dep [1][0] = las [0][1];
+		angles_dep [1][1] = las [0][2];
+	}
+	float paliers[2][2]; // [pas_b_a, pas_c_a ; pas_b_r, pas_c_r]
+	for (int i = 0; i < 2; i++) {
+		for (int j = 0; j < 2; j++){
+			paliers [i][j] = (angles_arr[i][j]-angles_dep[i][j])/nb_paliers;
+		}
+	}
+	for (int p = 1; p < nb_paliers+1; p++) {
+		for (int i = 0; i < 2; i++) {
+			for (int j = 0; j < 2; j++){
+				if (role==0){
+					las[i][j+1] = las[i][j+1] + paliers[i][j];
+					las[i+2][j+1] = las[i+2][j+1] + paliers[i][j];
+				}
+				else {
+					las[i][j+1] = las[i][j+1] + paliers[1-i][j];
+					las[i+2][j+1] = las[i+2][j+1] + paliers[1-i][j];
+				}
+			}
+		}
+		Serial.println(String(las[0][0])+String(las[0][0])+String(las[0][0])+String(las[0][0]));
+		updateServoAngle(); // MAJ la commande des servos (4 pattes)
+		delay(TICK_MS); 
+	}
+}
+
 /**
- * @brief //Twist the body without moving the body.
+ * @brief //Twist the body without moving the body. 
  *
  * @param startPt Starting point
  * @param end__Pt Target point
@@ -436,7 +593,8 @@ void move_any(int alpha, float stepLength, int gama, int spd)
  */
 
 // Cette fonction calcule le temps de mouvement des pattes à partir de la patte qui parcours la plus grande distance (pt depart/arrivee en arguments)
-// Puis déplace les pattes à la vitesse demandée (tickLength % vitesse)
+// Puis déplace les pattes à la vitesse demandée en ligne droite (pas de décomposition du mouvement) (tickLength % vitesse)
+// PAS DE DEPLACEMENT DU ROBOT
 void action_twist(float (*startPt)[3], float (*end__Pt)[3], float tickLength, bool isContainedOffset)
 {
 	//The parameter represents the foot point coordinates.
@@ -495,10 +653,11 @@ void twist_any(int alpha, int beta, int gama)
 
 	float newPt[4][3];
 
-	newPt[0][0] = calibratePosition[0][0] - v_x_cos_theta_p_c + LEN_BD;
-	newPt[1][0] = calibratePosition[1][0] + v_x_cos_theta_m_c - LEN_BD;
-	newPt[2][0] = calibratePosition[2][0] + v_x_cos_theta_p_c - LEN_BD;
-	newPt[3][0] = calibratePosition[3][0] - v_x_cos_theta_m_c + LEN_BD;
+	// axe X : (dans le cas où c>0 , LEN_BD - vx.cos(theta+c) >0)
+	newPt[0][0] = calibratePosition[0][0] - v_x_cos_theta_p_c + LEN_BD; //on avance P0P de (LEN_BD - v.cos(theta+c)) (>0 si c>0)
+	newPt[1][0] = calibratePosition[1][0] + v_x_cos_theta_m_c - LEN_BD; //on avance P1P de (v.cos(theta-c) - LEN_BD) (>0 si c>0)
+	newPt[2][0] = calibratePosition[2][0] + v_x_cos_theta_p_c - LEN_BD; //on recule P2P de (v.cos(theta+c) - LEN_BD) (<0 si c>0)
+	newPt[3][0] = calibratePosition[3][0] - v_x_cos_theta_m_c + LEN_BD; //on recule P3P de (LEN_BD - v.cos(theta-c)) (<0 si c>0)
 
 	newPt[0][1] = calibratePosition[0][1] + l_x_sin_a + w_x_sin_b;
 	newPt[1][1] = calibratePosition[1][1] - l_x_sin_a + w_x_sin_b;
@@ -753,12 +912,15 @@ void cooToA_All(float (*Pt)[3], float (*ag)[3])
 	cooToA(Pt[3], ag[3]);
 }
 
+// remet les arguments dans le bon format et appelle cooToA
 void cooToA(float x, float y, float z, float *abc)
 {
 	float xyz[] = {x, y, z};
 	cooToA(xyz, abc);
 }
 
+// cooToA semble normaliser la position des pattes pour éviter d'avoir une distance [PnM1;PnP] trop grande et donc trop de couple sur les servos
+// cooToA recalcule donc les angles des servos pour aller à la nouvelle position sans avoir [PnM1;PnP] > DR
 void cooToA(float *xyz, float *abc)
 {
 	float a, b, c, d, x, y, z, k;

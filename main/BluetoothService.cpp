@@ -69,7 +69,8 @@ class MyCallbacks : public BLECharacteristicCallbacks
 {
 	void onWrite(BLECharacteristic *pCharacteristic)
 	{
-		onBleReceived(pCharacteristic);
+		onBleReceived(pCharacteristic); // Lire les RxValue, séparer les infos contenues et les envoyer dans la Queue
+
 	}
 };
 

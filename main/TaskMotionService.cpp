@@ -135,7 +135,7 @@ void task_MotionService(void *pvParameters)
 			if (mpm.paramterCount >= 3)
 			{
 				resumeStanding();
-				move_any(mpm.paramters[1], mpm.paramters[2], mpm.paramters[3], mpm.paramters[4]);
+				move_any2(mpm.paramters[1], mpm.paramters[2], mpm.paramters[3], mpm.paramters[4]);
 			}
 			break;
 		case ACTION_DANCING:

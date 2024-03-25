@@ -41,7 +41,7 @@ void setup()
     // log_e("Total PSRAM: %d", heap_caps_get_total_size(MALLOC_CAP_8BIT));
     // log_e("Free PSRAM: %d\n", heap_caps_get_free_size(MALLOC_CAP_8BIT));
 
-    startTask(TASK_MOTION_SERVICE);
+    startTask(TASK_MOTION_SERVICE); // appelle la fonction startTask (définie dans TaskManager.cpp) avec l'argument TASK_MOTION_SERVICE
     startTask(TASK_SECONDRAY); // loop2
     // startTask(TASK_COMMAND_SERVICE);
 
@@ -99,23 +99,24 @@ void serialEventRun()
     }
 }
 
+// Lire les RxValue, séparer les infos contenues et les envoyer dans la Queue
 void onBleReceived(BLECharacteristic *pCharacteristic)
 {
-    std::string rxValue = pCharacteristic->getValue();
+    std::string rxValue = pCharacteristic->getValue(); 
     static String bleInputString = "";
     // Serial.print("onBleReceived() function running on core: ");
     // Serial.println(xPortGetCoreID());
     // Serial.println(pcTaskGetTaskName(xTaskGetCurrentTaskHandle()));
 
-    if (rxValue.length() > 0)
+    if (rxValue.length() > 0) // longueur de la chaine de caractère
     {
         for (int i = 0; i < rxValue.length(); i++)
         {
-            bleInputString += rxValue[i];
+            bleInputString += rxValue[i]; // on recopie terme à terme rxValue dans bleInputString
             // Serial.print(rxValue.length() );
             // Serial.print(" ");
             // Serial.print(rxValue[i]);
-            if (rxValue[i] == '\n')
+            if (rxValue[i] == '\n') // quand on lit un retour à la ligne on envoie bleInputString dans la Queue et on RaZ bleInputString
             {
                 enterMessageQueue(bleInputString);
                 bleInputString = "";

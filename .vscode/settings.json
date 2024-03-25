@@ -23,7 +23,10 @@
         "esp_bt_main.h": "c",
         "*.ipp": "cpp",
         "charconv": "cpp",
-        "*.inc": "cpp"
+        "*.inc": "cpp",
+        "random": "cpp",
+        "cmath": "cpp"
     },
-    "idf.portWin": "COM9"
+    "idf.portWin": "COM9",
+    "idf.flashType": "DFU"
 }
