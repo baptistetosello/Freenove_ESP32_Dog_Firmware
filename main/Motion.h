@@ -40,6 +40,7 @@ void move_step_by_step(float (*startPt)[3], float (*end__Pt)[3], int spd = 5);
 // void move_any(int alpha, float stepLength, int gama);
 void move_any(int alpha, float stepLength, int gama, int spd = 5);
 void move_any2(int alpha, float stepLength, int gama, int spd = 5);
+void move_any3(int alpha, float stepLength, int gama, int spd = 5);
 
 // Bouger les 4 pieds d'une position de départ (dans leur repère) à une position d'arrivée (dans leur repère) 
 // 1 mouvement : les 4 pattes se déplacent simultanéments, les PnP se déplacent en ligne droite 
@@ -65,7 +66,10 @@ void cooToA(float x, float y, float z, float *abc);
 void cooToA(float *xyz, float *abc);
 void getServoOffsetFromStorage();
 
-void angle_speed_move(float angles_arr [2][2], int role,  int nb_paliers);
 
+
+void angle_speed_move(float angles_arr [2][2], int role,  int nb_paliers);
+void adapt_stride_and_move(float GO_stride [3][20],float pas_temps, int nbr_pas_cycle,int role) ;
+void set_servos_angles (float angles[2][3], int role);
 
 #endif

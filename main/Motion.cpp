@@ -66,6 +66,8 @@ float calibratePosition[4][3] = {{10, 99, 10}, {10, 99, 10}, {10, 99, -10}, {10,
 float servoOffset[4][3] = {{0, 0, 0}, {0, 0, 0}, {0, 0, 0}, {0, 0, 0}};
 // legAngles ,global variable, Used to save the servo angle ,== abc
 float las[4][3];
+// OFFSET rajouté par observation avec nos positions à 90 degré
+float servoOffset2[4][3] = {{-3, -6, -5}, {-2, -2, -2}, {2, -2, -4}, {-4, 0, -5}};
 // The robot origin point position when moving. It will be changed based on the calibration point.
 float movingOriginPos[4][3];
 
@@ -434,12 +436,13 @@ void move_any(int alpha, float stepLength, int gama, int spd)
 	// memcpy(calibratePosition, tmpCalibrationPos, sizeof(calibratePosition));
 }
 
+// fonction de déplacement basée sur du pilotage en angle (utilisée pour tests)
 void move_any2(int alpha, float stepLength, int gama, int spd) 
 	// l'argument alpha est un angle en degrés (direction du déplacement linéaire [TRANSLATION]) --> Joystick gauche angle
 	// l'agument stepLength semble être la longueur d'un pas [TRANSLATION] --> Joystick droit profondeur
 	// l'argument gama correspond au spin [ROTATION]--> joystick droit angle
 {
-	stepLength = 10; // stepLength = stepLength/2
+	stepLength = -3; // stepLength = stepLength/2
 	//alpha = 0;
 	//gama = 0;
 	u8 pa1 = 0 , pa2 = 1, pr1 = 2, pr2 = 3;
@@ -448,6 +451,38 @@ void move_any2(int alpha, float stepLength, int gama, int spd)
 	pr1 = 1; // patte qui reste au sol et pousse 
 	pr2 = 3; // patte qui reste au sol et pousse 
 
+// VERIF DES POSITIONS PAR DEFAUT
+	if (stepLength==-3) {	
+		las[0][0]=87;//ok
+		las[0][1]=84;//ok
+		las[0][2]=85;//ok
+		las[1][0]=88;//ok
+		las[1][1]=88;//ok
+		las[1][2]=88;//ok
+		las[2][0]=92;//ok
+		las[2][1]=88;//ok
+		las[2][2]=86;//ok
+		las[3][0]=86;//ok
+		las[3][1]=90;//ok
+		las[3][2]=85;//ok
+		updateServoAngle(); // MAJ la commande des servos (4 pattes)
+		delay(100000);
+	}
+// MESURE VITESSE SERVOS 
+	if (stepLength==-2) {	
+		// PHASE 1.1 : 
+		// pa : 135/90 --> 135/135
+		// pr : 135/90 --> nbp
+		las[0][1]=0;
+		las[0][2]=0;
+		updateServoAngle(); // MAJ la commande des servos (4 pattes)
+		delay(10000);
+		las[0][1]=180;
+		las[0][2]=0;
+		updateServoAngle(); // MAJ la commande des servos (4 pattes)
+		delay(5000);
+
+		}
 // EQUILIBRE 
 	if (stepLength==-1) {
 		
@@ -543,6 +578,33 @@ void move_any2(int alpha, float stepLength, int gama, int spd)
 	}		
 }
 
+// Démarches du GO (cycles avec pas de 0.0167 --> 60fps)
+float GO_stride_1 [3][20] = {{90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90},{119,122,126,130,132,134,136,139,142,145,149,150,148,139,127,120,115,115,116,117},{85,85,87,88,86,84,84,83,82,86,100,112,120,113,104,92,84,77,76,80}};
+float GO_stride_1O [3][20] = {{90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90},{119,122,126,130,132,134,136,139,142,145,148,150,148,139,128,121,115,115,116,117},{85,85,87,88,86,84,84,83,82,86,96,106,115,113,105,94,84,77,76,80}};
+
+// nouvelle fonction de déplacement basée sur les démarche du G01 (pilotage en angles)
+void move_any3(int alpha, float stepLength, int gama, int spd) 
+	// l'argument alpha est un angle en degrés (direction du déplacement linéaire [TRANSLATION]) --> Joystick gauche angle
+	// l'agument stepLength semble être la longueur d'un pas [TRANSLATION] --> Joystick droit profondeur
+	// l'argument gama correspond au spin [ROTATION]--> joystick droit angle
+{
+	//stepLength = 10; // stepLength = stepLength/2
+	//alpha = 0;
+	//gama = 0;
+	u8 pa1 = 0 , pa2 = 1, pr1 = 2, pr2 = 3;
+	pa1 = 0; // patte qui se soulève et avance
+	pa2 = 2; // patte qui se soulève et avance
+	pr1 = 1; // patte qui reste au sol et pousse 
+	pr2 = 3; // patte qui reste au sol et pousse 
+
+	float pas_temps = 0.0167;
+	int nbr_pas_cycle = 20;
+	for (int i = 0; i < 50; i++) {
+		adapt_stride_and_move(GO_stride_1O,16.7,20,0);	
+	}
+}
+
+// décomposition (interpolation linéaire) des mouvements de servo pour ralentir ou fluidifier la démarche 
 void angle_speed_move(float angles_arr [2][2], int role,  int nb_paliers) 
 {
 	float angles_dep [2][2];
@@ -582,6 +644,87 @@ void angle_speed_move(float angles_arr [2][2], int role,  int nb_paliers)
 		delay(TICK_MS); 
 	}
 }
+
+// fonction qui formate une démarche de GO1 à un nouveau pas de temps et une nouvelle durée de cycle
+// une fois formatée, elle effectue la démarche demandée
+void adapt_stride_and_move(float GO_stride [3][20],float pas_temps, int nbr_pas_cycle,int role) {
+	pas_temps = 10; //
+	//nbr_pas_cycle = 20; //
+	//float angles [2][nbr_pas_cycle] = {{}, {}};
+	//float temps_cycle = pas_temps * nbr_pas_cycle;  
+	//float pas_temps_GOstride = 0.0167;
+	//float temps_cycle_GO = 0.334;
+	//float pas_interpol = temps_cycle_GO / nbr_pas_cycle;
+	//float ti = pas_interpol;
+	//int j=0;
+	//if (role ==0) {	
+		//while (ti <= temps_cycle_GO){
+			//int i=0;
+			//while (ti<i*pas_temps_GOstride && ti>(i+1)*pas_temps_GOstride){
+				//i=i+1;
+				//angles[0][j] = round(angles[0][j]+(ti-i*pas_temps_GOstride)*(angles[0][i+1]-angles[0][i])/pas_temps_GOstride);
+				//angles[0][j] = round(angles[0][j]+(ti-i*pas_temps_GOstride)*(angles[0][i+1]-angles[0][i])/pas_temps_GOstride);
+				//j=j+1;
+				//ti = ti + pas_interpol;
+			//}
+		//}
+	//}
+	for (int k=0; k<20; k++ ){
+		float angles_act[2][3];
+		//int q=k+nbr_pas_cycle/2;
+		//if (k>nbr_pas_cycle/2){
+			//q=k-nbr_pas_cycle/2;
+		//}
+		//angles_act[0][0] = angles[0][k];
+		//angles_act[0][1] = angles[0][(k+10)%20];
+		//angles_act[1][0] = angles[1][k];
+		//angles_act[1][1] = angles[1][q];
+		angles_act[0][0] = GO_stride[0][k];//angle a;k
+		angles_act[0][1] = GO_stride[1][k];//angle b;k
+		angles_act[0][2] = GO_stride[2][k];//angle c;k
+		angles_act[1][0] = GO_stride[0][(k+10)%20]; //angle a;k+10
+		angles_act[1][1] = GO_stride[1][(k+10)%20]; //angle b;k+10
+		angles_act[1][2] = GO_stride[2][(k+10)%20]; //angle c;k+10
+		set_servos_angles(angles_act, role);
+		delay(pas_temps);
+	}
+}
+
+// fonction qui à partir des angles des pattes recul/avance et du role fait le pilotage des servos
+void set_servos_angles (float angles[2][3], int role) {
+	if (role==0){
+		las[0][0] = angles[0][0] + servoOffset2[0][0]; 
+		las[0][1] = angles[0][1] + servoOffset2[0][1];
+		las[0][2] = angles[0][2] + servoOffset2[0][2];
+		las[2][0] = angles[0][0] + servoOffset2[2][0];
+		las[2][1] = angles[0][1] + servoOffset2[2][1];
+		las[2][2] = angles[0][2] + servoOffset2[2][2];
+		las[1][0] = angles[1][0] + servoOffset2[1][0];
+		las[1][1] = angles[1][1] + servoOffset2[1][1];
+		las[1][2] = angles[1][2] + servoOffset2[1][2];
+		las[3][0] = angles[1][0] + servoOffset2[3][0];
+		las[3][1] = angles[1][1] + servoOffset2[3][1];
+		las[3][2] = angles[1][2] + servoOffset2[3][2];
+		updateServoAngle();
+	}
+	else {
+		las[0][0] = angles[1][0] + servoOffset2[0][0];
+		las[0][1] = angles[1][1] + servoOffset2[0][1];
+		las[0][2] = angles[1][2] + servoOffset2[0][2];
+		las[2][0] = angles[1][0] + servoOffset2[2][0];
+		las[2][1] = angles[1][1] + servoOffset2[2][1];
+		las[2][2] = angles[1][2] + servoOffset2[2][2];
+		las[1][0] = angles[0][0] + servoOffset2[1][0];
+		las[1][1] = angles[0][1] + servoOffset2[1][1];
+		las[1][2] = angles[0][2] + servoOffset2[1][2];
+		las[3][0] = angles[0][0] + servoOffset2[3][0];
+		las[3][1] = angles[0][1] + servoOffset2[3][1];
+		las[3][2] = angles[0][2] + servoOffset2[3][2];
+		updateServoAngle();
+	}
+}
+	
+
 
 /**
  * @brief //Twist the body without moving the body. 
